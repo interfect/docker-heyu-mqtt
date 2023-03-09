@@ -23,6 +23,7 @@ import paho.mqtt.client as mqtt
 import re
 import subprocess
 import os
+import json
 
 try:
   broker = os.environ['MQTT_HOST']
@@ -73,6 +74,23 @@ try:
   stattopic = os.environ['STAT_TOPIC']
 except:
   stattopic = "x10/stat"
+
+#
+# Housecode letters to announce via HomeAssistant discovery
+#
+try:
+  discoveryhouses = os.environ['DISCOVERY_HOUSECODES']
+except:
+  discoveryhouses = ''
+discoveryhouses = [h for h in discoveryhouses.upper() if h in "ABCDEFGHIJKLMNOP"]
+  
+#
+# Topic to announce on for HomeAssistant discovery
+#
+try:
+  discoverytopic = os.environ['DISCOVERY_TOPIC']
+except:
+  discoverytopic = 'homeassistant'
 
 #
 # Whether a CM17A is in use
@@ -167,6 +185,12 @@ def on_connect (client, userdata, flags, rc):
 
   print("Connected to MQTT broker, result code "+str(rc))
   client.subscribe(cmdtopic+"/+")
+  
+  # Announce for discovery
+  for house in discoveryhouses:
+    print('Announcing housecode '+house+' for HomeAssistant discovery')
+    for unit in range(1, 17):
+      ha_discovery_announce(client, house, unit)
 
 #
 # Callback for MQTT message received
@@ -193,6 +217,21 @@ def on_message(client, userdata, message):
     result = execute(client, command, hc)
   else:
     print("Invalid command or home code")
+    
+#
+# Home Assistant Discovery announcement
+#
+
+def ha_discovery_announce(client, house, unit):
+  config = {
+    'name': 'X10 Module '+house.upper()+str(unit),
+    'state_topic': stattopic+'/'+house.lower()+str(unit),
+    'command_topic': cmdtopic+'/'+house.lower()+str(unit),
+    'unique_id':'x10mqtt_x10_'+house.lower()+str(unit)
+  }
+  topic = discoverytopic+'/switch/x10mqtt/x10_'+house.lower()+str(unit)+'/config'
+  print('Publishing at ' + topic + ': ' + str(config))
+  client.publish(topic, json.dumps(config), retain=True)
 
 # ---------------------------
 # Main program
